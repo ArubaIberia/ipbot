@@ -78,4 +78,6 @@ func loop(token string) error {
 		//msg.ReplyToMessageID = update.Message.MessageID
 		bot.Send(msg)
 	}
+
+	return nil
 }
