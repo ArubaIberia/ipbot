@@ -40,19 +40,21 @@ func main() {
 		log.Fatal("You must provide Telegram token (-token <telegram token>)")
 	}
 
+	masters := make([]string, 0, 10)
 	for {
-		if err := loop(*token); err != nil {
+		var err error
+		if masters, err = loop(masters, *token); err != nil {
 			log.Print("Error: ", err, "\nRetrying in five minutes...")
 			time.Sleep(5 * time.Minute)
 		}
 	}
 }
 
-func loop(token string) error {
+func loop(masters []string, token string) ([]string, error) {
 
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		return err
+		return masters, err
 	}
 
 	bot.Debug = true
@@ -78,21 +80,58 @@ func loop(token string) error {
 		}
 		fields := strings.Fields(update.Message.Text)
 
-		// Can take several orders in a single line
-		for len(fields) > 0 {
-			log.Printf("[%s] %s", update.Message.From.UserName, strings.Join(fields, " "))
-			reply := ""
-			remainder := []string{}
-			for command, handler := range handlers {
-				if strings.EqualFold(fields[0], command) {
-					reply, remainder = handler(update.Message, fields)
+		// Only accept commands from master
+		current := update.Message.From.UserName
+		if len(masters) <= 0 {
+			masters = append(masters, current)
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("%s is a new master", current))
+			//msg.ReplyToMessageID = update.Message.MessageID
+			bot.Send(msg)
+		} else {
+			found := false
+			for _, master := range masters {
+				if master == current {
+					found = true
 					break
 				}
 			}
+			if !found {
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("%s is not my master", current))
+				//msg.ReplyToMessageID = update.Message.MessageID
+				bot.Send(msg)
+				continue
+			}
+		}
+
+		// Can take several orders in a single line
+		for len(fields) > 0 {
+			log.Printf("[%s] %s", update.Message.From.UserName, strings.Join(fields, " "))
+			var remainder []string
+			reply := ""
+			// Check for Master command
+			if strings.EqualFold(fields[0], "master") {
+				if len(fields) < 2 {
+					reply = "Must provide new master username (master <username>)"
+				} else {
+					masters = append(masters, fields[1])
+					reply = fmt.Sprintf("%s is a new master", current)
+					remainder = fields[2:]
+				}
+			} else {
+				// Check for other commands
+				for command, handler := range handlers {
+					if strings.EqualFold(fields[0], command) {
+						reply, remainder = handler(update.Message, fields)
+						break
+					}
+				}
+			}
+			// Check for errors
 			if reply == "" {
 				reply = fmt.Sprintf("Command %s is not known.\nKnown commands:\n  - %s", update.Message.Text, orders)
 				remainder = nil
 			}
+			// Check for a remainder
 			if remainder != nil && len(remainder) > 0 {
 				if len(remainder) < len(fields) {
 					fields = remainder
@@ -113,5 +152,5 @@ func loop(token string) error {
 		}
 	}
 
-	return nil
+	return masters, nil
 }
