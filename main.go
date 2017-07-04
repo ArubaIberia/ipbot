@@ -14,7 +14,7 @@ type ReplyFunc func(msg *tgbotapi.Message) string
 
 func getHandlers() map[string]ReplyFunc {
 	return map[string]ReplyFunc{
-		"ip": replyToIP,
+		"ip": ReplyToIP,
 	}
 }
 
@@ -23,12 +23,12 @@ func main() {
 	token := flag.String("token", "", "Telegram API token")
 	flag.Parse()
 	if token == nil || *token == "" {
-		log.Fatal("Debe especificar el token Telegram con el parametro -token")
+		log.Fatal("You must provide Telegram token (-token <telegram token>)")
 	}
 
 	for {
 		if err := loop(*token); err != nil {
-			log.Print("Error: ", err, "\nEsperando 5 minutos...")
+			log.Print("Error: ", err, "\nRetrying in five minutes...")
 			time.Sleep(5 * time.Minute)
 		}
 	}
@@ -42,7 +42,7 @@ func loop(token string) error {
 	}
 
 	bot.Debug = true
-	log.Printf("Authorizado en la cuenta %s", bot.Self.UserName)
+	log.Printf("Bot username %s", bot.Self.UserName)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -71,7 +71,7 @@ func loop(token string) error {
 			}
 		}
 		if reply == "" {
-			reply = fmt.Sprintf("Orden %s no reconocida. Ordenes reconocidas:\n  - %s", update.Message.Text, orders)
+			reply = fmt.Sprintf("Command %s is not known.\nKnown commands:\n  - %s", update.Message.Text, orders)
 		}
 
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)

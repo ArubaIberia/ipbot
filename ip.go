@@ -8,7 +8,8 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 )
 
-func replyToIP(msg *tgbotapi.Message) string {
+// Reply to a message asking for IP Addresses.
+func ReplyToIP(msg *tgbotapi.Message) string {
 	ifaces, err := getIPs()
 	if err != nil {
 		return err.Error()
@@ -18,6 +19,7 @@ func replyToIP(msg *tgbotapi.Message) string {
 
 type ifaceMap map[string][]net.IP
 
+// Converts an ifaceMap to string
 func (ifaces ifaceMap) ToString() string {
 	lines := make([]string, 0, len(ifaces))
 	for name, ips := range ifaces {
@@ -31,6 +33,7 @@ func (ifaces ifaceMap) ToString() string {
 	return strings.Join(lines, "\n")
 }
 
+// Enumerates all interfaces and IP Addresses
 func getIPs() (ifaceMap, error) {
 	result := make(ifaceMap)
 	ifaces, err := net.Interfaces()
