@@ -82,12 +82,13 @@ func loop(masters []string, token string) ([]string, error) {
 
 		// Only accept commands from master
 		current := update.Message.From.UserName
-		if len(masters) <= 0 {
+		switch {
+		case len(masters) <= 0:
 			masters = append(masters, current)
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("%s is a new master", current))
 			//msg.ReplyToMessageID = update.Message.MessageID
 			bot.Send(msg)
-		} else {
+		case !strings.EqualFold(fields[0], "ip"):
 			found := false
 			for _, master := range masters {
 				if master == current {
