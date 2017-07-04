@@ -15,6 +15,7 @@ type VLAN struct {
 	Selected   int
 	Interfaces *Interfaces
 	Device     string
+	IFB        string
 }
 
 // Select a particular VLAN
@@ -42,21 +43,29 @@ func (v *VLAN) ReplyToVLAN(msg *tgbotapi.Message, fields []string) (string, []st
 	}
 	v.Selected = vlan
 	v.Device = found
+	ifb, err := v.getIFB()
+	if err != nil {
+		return fmt.Sprintf("Could not get IFB: %s", err.Error()), fields[2:]
+	}
+	v.IFB = ifb
 	return fmt.Sprintf("VLAN %d selected", vlan), fields[2:]
 }
 
 type params struct {
-	delay, jitter int
-	err           string
+	delay, jitter     int
+	loss, correlation float64
+	err               string
 }
 
 func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []string) {
 	if v.Selected == 0 {
 		return params{err: "No VLAN selected. Run \"vlan\" for more info"}, nil
 	}
-	if len(fields) < 3 {
-		return params{err: "Error: must provide delay and jitter (ms) (out <delay_ms> <jitter_ms>)"}, nil
+	if len(fields) < 2 {
+		return params{err: "Error: must at least provide delay (ms). Format: [in|out] <delay_ms> <jitter_ms> <PL %> <correlation %>"}, nil
 	}
+	result := params{}
+	spent := 2
 	msDelay, err := strconv.Atoi(fields[1])
 	if err != nil {
 		return params{err: fmt.Sprintf("delay is not an int: %s", err.Error())}, nil
@@ -64,18 +73,39 @@ func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []stri
 	if msDelay < 1 || msDelay > 4094 {
 		return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
 	}
-	msJitter, err := strconv.Atoi(fields[2])
-	if err != nil {
-		return params{err: fmt.Sprintf("jitter is not an int: %s", err.Error())}, nil
+	result.delay = msDelay
+	if len(fields) > 2 {
+		if msJitter, err := strconv.Atoi(fields[2]); err == nil {
+			if msJitter < 1 || msJitter > 4094 {
+				return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
+			}
+			result.jitter = msJitter
+			spent = 3
+			if len(fields) > 3 {
+				if pl, err := strconv.ParseFloat(fields[3], 32); err == nil {
+					if pl < 0 || pl > 100 {
+						return params{err: "Error: Packet loss must be between 0.0 and 100.0 percent"}, nil
+					}
+					result.loss = pl
+					spent = 4
+					if len(fields) > 4 {
+						if corr, err := strconv.ParseFloat(fields[4], 32); err == nil {
+							if corr < 0 || corr > 100 {
+								return params{err: "Error: Correlation must be between 0.0 and 100.0 percent"}, nil
+							}
+							result.correlation = corr
+							spent = 5
+						}
+					}
+				}
+			}
+		}
 	}
-	if msJitter < 1 || msJitter > 4094 {
-		return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
-	}
-	return params{delay: msDelay, jitter: msJitter}, fields[3:]
+	return result, fields[spent:]
 }
 
 // Add delay to an interface
-func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (string, []string) {
+func (v *VLAN) delay(iface string, p params, remainder []string) (string, []string) {
 	// Remove any qdisc
 	cmd := exec.Command("tc", "qdisc", "del", "dev", iface, "root")
 	var outDel bytes.Buffer
@@ -85,8 +115,8 @@ func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (s
 		header = fmt.Sprintf("(Ignore) Error at qdisc del: %s", err.Error())
 	}
 	// Add a new qdisc
-	delay := fmt.Sprintf("%dms", msDelay)
-	jitter := fmt.Sprintf("%dms", msJitter)
+	delay := fmt.Sprintf("%dms", p.delay)
+	jitter := fmt.Sprintf("%dms", p.jitter)
 	cmd = exec.Command("tc", "qdisc", "add", "dev", v.Device, "root", "netem", "delay", delay, jitter, "distribution", "normal")
 	var outAdd bytes.Buffer
 	cmd.Stdout = &outAdd
@@ -95,11 +125,28 @@ func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (s
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
-		fmt.Sprintf("Delay of %d ms (jitter %d) added outbound of %s", msDelay, msJitter, iface),
+		fmt.Sprintf("Delay of %d ms (jitter %d) added outbound of %s", p.delay, p.jitter, iface),
 		header,
 		outDel.String(),
 		outAdd.String(),
 	}, "\n"), remainder
+}
+
+func (v *VLAN) getIFB() (string, error) {
+	cmd := exec.Command("tc", "filter", "show", "dev", v.Device, "root")
+	var outShow bytes.Buffer
+	cmd.Stdout = &outShow
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("Error at filter show: %s", err.Error())
+	}
+	data := outShow.String()
+	re := regexp.MustCompile("Egress Redirect to device ifb[0-9]")
+	match := re.FindString(data)
+	if match == "" {
+		return "", fmt.Errorf("Missing IFB device for %s in %s", v.Device, data)
+	}
+	ifbFields := strings.Fields(match)
+	return ifbFields[len(ifbFields)-1], nil
 }
 
 // Add delay in the outbound direction
@@ -108,23 +155,17 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) (string, []str
 	if remainder == nil {
 		return data.err, remainder
 	}
-	return v.delay(v.Device, data.delay, data.jitter, remainder)
+	return v.delay(v.Device, data, remainder)
 }
 
-func (v *VLAN) ReplyToTC(msg *tgbotapi.Message, fields []string) (string, []string) {
-	cmd := exec.Command("tc", "filter", "show", "dev", v.Device, "root")
-	var outShow bytes.Buffer
-	cmd.Stdout = &outShow
-	if err := cmd.Run(); err != nil {
-		return fmt.Sprintf("Error at filter show: %s", err.Error()), nil
+// Add delay in the outbound direction
+func (v *VLAN) ReplyToIn(msg *tgbotapi.Message, fields []string) (string, []string) {
+	if v.IFB == "" {
+		return "Current VLAN does not have IFB device assigned", nil
 	}
-	data := outShow.String()
-	re := regexp.MustCompile("Egress Redirect to device ifb[0-9]")
-	match := re.FindString(data)
-	if match == "" {
-		return fmt.Sprintf("Missing IFB device for %s in %s", v.Device, data), nil
+	data, remainder := v.getParams(msg, fields)
+	if remainder == nil {
+		return data.err, remainder
 	}
-	ifbFields := strings.Fields(match)
-	ifb := ifbFields[len(ifbFields)-1]
-	return fmt.Sprintf("IFB device for %s: %s", v.Device, ifb), fields[1:]
+	return v.delay(v.IFB, data, remainder)
 }
