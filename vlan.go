@@ -57,6 +57,7 @@ type params struct {
 	err               string
 }
 
+// Get Delay, Jitter, PL and PL correlation from command
 func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []string) {
 	if v.Selected == 0 {
 		return params{err: "No VLAN selected. Run \"vlan\" for more info"}, nil
@@ -104,8 +105,8 @@ func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []stri
 	return result, fields[spent:]
 }
 
-// Add delay to an interface
-func (v *VLAN) delay(iface string, p params, remainder []string) (string, []string) {
+// Add impairments (delay, jitter, loss...) to an interface
+func (v *VLAN) impair(iface string, p params, remainder []string) (string, []string) {
 	// Remove any qdisc
 	cmd := exec.Command("tc", "qdisc", "del", "dev", iface, "root")
 	var outDel bytes.Buffer
@@ -114,10 +115,22 @@ func (v *VLAN) delay(iface string, p params, remainder []string) (string, []stri
 	if err := cmd.Run(); err != nil {
 		header = fmt.Sprintf("(Ignore) Error at qdisc del: %s", err.Error())
 	}
-	// Add a new qdisc
-	delay := fmt.Sprintf("%dms", p.delay)
-	jitter := fmt.Sprintf("%dms", p.jitter)
-	cmd = exec.Command("tc", "qdisc", "add", "dev", v.Device, "root", "netem", "delay", delay, jitter, "distribution", "normal")
+	// Prepare for adding jitter and oacket loss
+	cmdLine := fmt.Sprintf("tc qdisc add dev %s root netem", iface)
+	if p.delay != 0 {
+		cmdLine = fmt.Sprintf("%s delay %dms", cmdLine, p.delay)
+		if p.jitter != 0 {
+			cmdLine = fmt.Sprintf("%s %dms distribution normal", cmdLine, p.jitter)
+		}
+	}
+	if p.loss != 0 {
+		cmdLine = fmt.Sprintf("%s loss %f%%", cmdLine, p.loss)
+		if p.correlation != 0 {
+			cmdLine = fmt.Sprintf("%s %f%%", cmdLine, p.correlation)
+		}
+	}
+	fields := strings.Fields(cmdLine)
+	cmd = exec.Command(fields[0], fields[1:]...)
 	var outAdd bytes.Buffer
 	cmd.Stdout = &outAdd
 	if err := cmd.Run(); err != nil {
@@ -125,7 +138,7 @@ func (v *VLAN) delay(iface string, p params, remainder []string) (string, []stri
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
-		fmt.Sprintf("Delay of %d ms (jitter %d) added outbound of %s", p.delay, p.jitter, iface),
+		fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %f%% PL (%f%% correlation)", p.delay, p.jitter, p.loss, p.correlation),
 		header,
 		outDel.String(),
 		outAdd.String(),
@@ -155,7 +168,7 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) (string, []str
 	if remainder == nil {
 		return data.err, remainder
 	}
-	return v.delay(v.Device, data, remainder)
+	return v.impair(v.Device, data, remainder)
 }
 
 // Add delay in the outbound direction
@@ -167,5 +180,5 @@ func (v *VLAN) ReplyToIn(msg *tgbotapi.Message, fields []string) (string, []stri
 	if remainder == nil {
 		return data.err, remainder
 	}
-	return v.delay(v.IFB, data, remainder)
+	return v.impair(v.IFB, data, remainder)
 }
