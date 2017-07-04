@@ -138,7 +138,7 @@ func (v *VLAN) impair(iface string, p params, remainder []string) (string, []str
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
-		fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %f%% PL (%f%% correlation)", p.delay, p.jitter, p.loss, p.correlation),
+		fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %f%% PL (%f%% correlation)", iface, p.delay, p.jitter, p.loss, p.correlation),
 		header,
 		outDel.String(),
 		outAdd.String(),
