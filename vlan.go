@@ -44,30 +44,39 @@ func (v *VLAN) ReplyToVLAN(msg *tgbotapi.Message, fields []string) (string, []st
 	return fmt.Sprintf("VLAN %d selected", vlan), fields[2:]
 }
 
-// Add delay in the outbound direction
-func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) (string, []string) {
+type params struct {
+	delay, jitter int
+	err           string
+}
+
+func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []string) {
 	if v.Selected == 0 {
-		return "No VLAN selected. Run \"vlan\" for more info", nil
+		return params{err: "No VLAN selected. Run \"vlan\" for more info"}, nil
 	}
 	if len(fields) < 3 {
-		return "Error: must provide delay and jitter (ms) (out <delay_ms> <jitter_ms>)", nil
+		return params{err: "Error: must provide delay and jitter (ms) (out <delay_ms> <jitter_ms>)"}, nil
 	}
 	msDelay, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return fmt.Sprintf("delay is not an int: %s", err.Error()), nil
+		return params{err: fmt.Sprintf("delay is not an int: %s", err.Error())}, nil
 	}
 	if msDelay < 1 || msDelay > 4094 {
-		return "Error: Delay must be between 1 and 4094 milliseconds", nil
+		return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
 	}
 	msJitter, err := strconv.Atoi(fields[2])
 	if err != nil {
-		return fmt.Sprintf("jitter is not an int: %s", err.Error()), nil
+		return params{err: fmt.Sprintf("jitter is not an int: %s", err.Error())}, nil
 	}
 	if msJitter < 1 || msJitter > 4094 {
-		return "Error: Delay must be between 1 and 4094 milliseconds", nil
+		return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
 	}
+	return params{delay: msDelay, jitter: msJitter}, fields[3:]
+}
+
+// Add delay to an interface
+func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (string, []string) {
 	// Remove any qdisc
-	cmd := exec.Command("tc", "qdisc", "del", "dev", v.Device, "root")
+	cmd := exec.Command("tc", "qdisc", "del", "dev", iface, "root")
 	cmd.Stdin = strings.NewReader("some input")
 	var outDel bytes.Buffer
 	cmd.Stdout = &outDel
@@ -87,9 +96,18 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) (string, []str
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
-		"Completed Succesfully",
+		fmt.Sprintf("Outbound delay of %s ms (jitter %s) added", msDelay, msJitter),
 		header,
 		outDel.String(),
 		outAdd.String(),
-	}, "\n"), fields[3:]
+	}, "\n"), remainder
+}
+
+// Add delay in the outbound direction
+func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) (string, []string) {
+	data, remainder := v.getParams(msg, fields)
+	if remainder == nil {
+		return data.err, remainder
+	}
+	return v.delay(v.Device, data.delay, data.jitter, remainder)
 }
