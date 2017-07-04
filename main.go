@@ -23,6 +23,9 @@ func getHandlers() map[string]ReplyFunc {
 		"vlan": func(msg *tgbotapi.Message, fields []string) string {
 			return vlans.ReplyToVLAN(msg, fields)
 		},
+		"out": func(msg *tgbotapi.Message, fields []string) string {
+			return vlans.ReplyToOut(msg, fields)
+		},
 	}
 }
 
