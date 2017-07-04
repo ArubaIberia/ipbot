@@ -71,14 +71,14 @@ func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []stri
 	if err != nil {
 		return params{err: fmt.Sprintf("delay is not an int: %s", err.Error())}, nil
 	}
-	if msDelay < 1 || msDelay > 4094 {
-		return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
+	if msDelay < 0 || msDelay > 4094 {
+		return params{err: "Error: Delay must be between 0 and 4094 milliseconds"}, nil
 	}
 	result.delay = msDelay
 	if len(fields) > 2 {
 		if msJitter, err := strconv.Atoi(fields[2]); err == nil {
-			if msJitter < 1 || msJitter > 4094 {
-				return params{err: "Error: Delay must be between 1 and 4094 milliseconds"}, nil
+			if msJitter < 0 || msJitter > 4094 {
+				return params{err: "Error: Jitter must be between 0 and 4094 milliseconds"}, nil
 			}
 			result.jitter = msJitter
 			spent = 3
@@ -117,24 +117,29 @@ func (v *VLAN) impair(iface string, p params, remainder []string) (string, []str
 	}
 	// Prepare for adding jitter and oacket loss
 	cmdLine := fmt.Sprintf("tc qdisc add dev %s root netem", iface)
+	something := false
 	if p.delay != 0 {
+		something = true
 		cmdLine = fmt.Sprintf("%s delay %dms", cmdLine, p.delay)
 		if p.jitter != 0 {
 			cmdLine = fmt.Sprintf("%s %dms distribution normal", cmdLine, p.jitter)
 		}
 	}
 	if p.loss != 0 {
+		something = true
 		cmdLine = fmt.Sprintf("%s loss %f%%", cmdLine, p.loss)
 		if p.correlation != 0 {
 			cmdLine = fmt.Sprintf("%s %f%%", cmdLine, p.correlation)
 		}
 	}
-	fields := strings.Fields(cmdLine)
-	cmd = exec.Command(fields[0], fields[1:]...)
 	var outAdd bytes.Buffer
-	cmd.Stdout = &outAdd
-	if err := cmd.Run(); err != nil {
-		return fmt.Sprintf("Error at qdisc add: %s", err.Error()), nil
+	if something {
+		fields := strings.Fields(cmdLine)
+		cmd = exec.Command(fields[0], fields[1:]...)
+		cmd.Stdout = &outAdd
+		if err := cmd.Run(); err != nil {
+			return fmt.Sprintf("Error at qdisc add: %s", err.Error()), nil
+		}
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
