@@ -10,11 +10,19 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 )
 
-type ReplyFunc func(msg *tgbotapi.Message) string
+type ReplyFunc func(msg *tgbotapi.Message, fields []string) string
 
 func getHandlers() map[string]ReplyFunc {
+	interfaces := &Interfaces{}
+	vlans := &VLAN{Selected: 0, Interfaces: interfaces}
+	interfaces.Update()
 	return map[string]ReplyFunc{
-		"ip": ReplyToIP,
+		"ip": func(msg *tgbotapi.Message, fields []string) string {
+			return interfaces.ReplyToIP(msg, fields)
+		},
+		"vlan": func(msg *tgbotapi.Message, fields []string) string {
+			return vlans.ReplyToVLAN(msg, fields)
+		},
 	}
 }
 
@@ -58,7 +66,12 @@ func loop(token string) error {
 	updates, err := bot.GetUpdatesChan(u)
 
 	for update := range updates {
+
 		if update.Message == nil {
+			continue
+		}
+		fields := strings.Fields(update.Message.Text)
+		if len(fields) < 1 {
 			continue
 		}
 
@@ -66,8 +79,8 @@ func loop(token string) error {
 
 		reply := ""
 		for command, handler := range handlers {
-			if strings.EqualFold(strings.TrimSpace(update.Message.Text), command) {
-				reply = handler(update.Message)
+			if strings.EqualFold(fields[0], command) {
+				reply = handler(update.Message, fields)
 			}
 		}
 		if reply == "" {

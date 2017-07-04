@@ -8,21 +8,22 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 )
 
+type Interfaces struct {
+	Current map[string][]net.IP
+}
+
 // Reply to a message asking for IP Addresses.
-func ReplyToIP(msg *tgbotapi.Message) string {
-	ifaces, err := getIPs()
-	if err != nil {
+func (ifaces *Interfaces) ReplyToIP(msg *tgbotapi.Message, fields []string) string {
+	if err := ifaces.Update(); err != nil {
 		return err.Error()
 	}
 	return ifaces.ToString()
 }
 
-type ifaceMap map[string][]net.IP
-
 // Converts an ifaceMap to string
-func (ifaces ifaceMap) ToString() string {
-	lines := make([]string, 0, len(ifaces))
-	for name, ips := range ifaces {
+func (ifaces *Interfaces) ToString() string {
+	lines := make([]string, 0, len(ifaces.Current))
+	for name, ips := range ifaces.Current {
 		texts := make([]string, 0, len(ips))
 		for _, ip := range ips {
 			texts = append(texts, ip.String())
@@ -34,16 +35,16 @@ func (ifaces ifaceMap) ToString() string {
 }
 
 // Enumerates all interfaces and IP Addresses
-func getIPs() (ifaceMap, error) {
-	result := make(ifaceMap)
-	ifaces, err := net.Interfaces()
+func (ifaces *Interfaces) Update() error {
+	netif, err := net.Interfaces()
+	result := make(map[string][]net.IP)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	for _, i := range ifaces {
+	for _, i := range netif {
 		addrs, err := i.Addrs()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		ips := make([]net.IP, 0, len(addrs))
 		for _, addr := range addrs {
@@ -62,5 +63,6 @@ func getIPs() (ifaceMap, error) {
 			result[i.Name] = ips
 		}
 	}
-	return result, nil
+	ifaces.Current = result
+	return nil
 }
