@@ -54,14 +54,14 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) string {
 	}
 	msDelay, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return err.Error()
+		return fmt.Sprintf("delay is not an int: %s", err.Error())
 	}
 	if msDelay < 1 || msDelay > 4094 {
 		return "Error: Delay must be between 1 and 4094 milliseconds"
 	}
 	msJitter, err := strconv.Atoi(fields[2])
 	if err != nil {
-		return err.Error()
+		return fmt.Sprintf("jitter is not an int: %s", err.Error())
 	}
 	if msJitter < 1 || msJitter > 4094 {
 		return "Error: Delay must be between 1 and 4094 milliseconds"
@@ -71,8 +71,9 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) string {
 	cmd.Stdin = strings.NewReader("some input")
 	var outDel bytes.Buffer
 	cmd.Stdout = &outDel
+        header := ""
 	if err := cmd.Run(); err != nil {
-		return err.Error()
+		header = fmt.Sprintf("(Ignore) Error at qdisc del: %s", err.Error())
 	}
 	// Add a new qdisc
 	delay := fmt.Sprintf("%dms", msDelay)
@@ -82,10 +83,12 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) string {
 	var outAdd bytes.Buffer
 	cmd.Stdout = &outAdd
 	if err := cmd.Run(); err != nil {
-		return err.Error()
+		return fmt.Sprintf("Error at qdisc add: %s", err.Error())
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
+                "Completed Succesfully",
+                header,
 		outDel.String(),
 		outAdd.String(),
 	}, "\n")
