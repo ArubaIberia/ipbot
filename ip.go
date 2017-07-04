@@ -13,11 +13,11 @@ type Interfaces struct {
 }
 
 // Reply to a message asking for IP Addresses.
-func (ifaces *Interfaces) ReplyToIP(msg *tgbotapi.Message, fields []string) string {
+func (ifaces *Interfaces) ReplyToIP(msg *tgbotapi.Message, fields []string) (string, []string) {
 	if err := ifaces.Update(); err != nil {
-		return err.Error()
+		return err.Error(), nil
 	}
-	return ifaces.ToString()
+	return ifaces.ToString(), fields[1:]
 }
 
 // Converts an ifaceMap to string
