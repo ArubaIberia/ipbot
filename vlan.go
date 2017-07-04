@@ -118,6 +118,7 @@ func (v *VLAN) impair(iface string, p params, remainder []string) (string, []str
 	// Prepare for adding jitter and oacket loss
 	cmdLine := fmt.Sprintf("tc qdisc add dev %s root netem", iface)
 	something := false
+	msg := fmt.Sprintf("Cleared interface %s", iface)
 	if p.delay != 0 {
 		something = true
 		cmdLine = fmt.Sprintf("%s delay %dms", cmdLine, p.delay)
@@ -134,6 +135,7 @@ func (v *VLAN) impair(iface string, p params, remainder []string) (string, []str
 	}
 	var outAdd bytes.Buffer
 	if something {
+		msg = fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %f%% PL (%f%% correlation)", iface, p.delay, p.jitter, p.loss, p.correlation)
 		fields := strings.Fields(cmdLine)
 		cmd = exec.Command(fields[0], fields[1:]...)
 		cmd.Stdout = &outAdd
@@ -143,8 +145,7 @@ func (v *VLAN) impair(iface string, p params, remainder []string) (string, []str
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
-		fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %f%% PL (%f%% correlation)", iface, p.delay, p.jitter, p.loss, p.correlation),
-		header,
+		msg, header,
 		outDel.String(),
 		outAdd.String(),
 	}, "\n"), remainder
