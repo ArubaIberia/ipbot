@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -77,7 +78,6 @@ func (v *VLAN) getParams(msg *tgbotapi.Message, fields []string) (params, []stri
 func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (string, []string) {
 	// Remove any qdisc
 	cmd := exec.Command("tc", "qdisc", "del", "dev", iface, "root")
-	cmd.Stdin = strings.NewReader("some input")
 	var outDel bytes.Buffer
 	cmd.Stdout = &outDel
 	header := ""
@@ -88,7 +88,6 @@ func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (s
 	delay := fmt.Sprintf("%dms", msDelay)
 	jitter := fmt.Sprintf("%dms", msJitter)
 	cmd = exec.Command("tc", "qdisc", "add", "dev", v.Device, "root", "netem", "delay", delay, jitter, "distribution", "normal")
-	cmd.Stdin = strings.NewReader("some input")
 	var outAdd bytes.Buffer
 	cmd.Stdout = &outAdd
 	if err := cmd.Run(); err != nil {
@@ -96,7 +95,7 @@ func (v *VLAN) delay(iface string, msDelay, msJitter int, remainder []string) (s
 	}
 	// Return the output of the qdisc commands
 	return strings.Join([]string{
-		fmt.Sprintf("Outbound delay of %s ms (jitter %s) added", msDelay, msJitter),
+		fmt.Sprintf("Delay of %d ms (jitter %d) added outbound of %s", msDelay, msJitter, iface),
 		header,
 		outDel.String(),
 		outAdd.String(),
@@ -110,4 +109,22 @@ func (v *VLAN) ReplyToOut(msg *tgbotapi.Message, fields []string) (string, []str
 		return data.err, remainder
 	}
 	return v.delay(v.Device, data.delay, data.jitter, remainder)
+}
+
+func (v *VLAN) ReplyToTC(msg *tgbotapi.Message, fields []string) (string, []string) {
+	cmd := exec.Command("tc", "filter", "show", "dev", v.Device, "root")
+	var outShow bytes.Buffer
+	cmd.Stdout = &outShow
+	if err := cmd.Run(); err != nil {
+		return fmt.Sprintf("Error at filter show: %s", err.Error()), nil
+	}
+	data := outShow.String()
+	re := regexp.MustCompile("Egress Redirect to device ifb[0-9]")
+	match := re.FindString(data)
+	if match == "" {
+		return fmt.Sprintf("Missing IFB device for %s in %s", v.Device, data), nil
+	}
+	ifbFields := strings.Fields(match)
+	ifb := ifbFields[len(ifbFields)-1]
+	return fmt.Sprintf("IFB device for %s: %s", v.Device, ifb), fields[1:]
 }
