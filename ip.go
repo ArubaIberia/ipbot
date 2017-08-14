@@ -8,33 +8,21 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 )
 
+// RegisterIP adds "ip" command to bot
+func RegisterIP(bot Bot) *Interfaces {
+	ifaces := &Interfaces{Current: make(map[string][]net.IP)}
+	bot.Add("ip", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+		return ifaces.replyToIP(bot, msg, tokens)
+	})
+	return ifaces
+}
+
+// Interfaces is a set of interfaces to IP addresses
 type Interfaces struct {
 	Current map[string][]net.IP
 }
 
-// Reply to a message asking for IP Addresses.
-func (ifaces *Interfaces) ReplyToIP(msg *tgbotapi.Message, fields []string) (string, []string) {
-	if err := ifaces.Update(); err != nil {
-		return err.Error(), nil
-	}
-	return ifaces.ToString(), fields[1:]
-}
-
-// Converts an ifaceMap to string
-func (ifaces *Interfaces) ToString() string {
-	lines := make([]string, 0, len(ifaces.Current))
-	for name, ips := range ifaces.Current {
-		texts := make([]string, 0, len(ips))
-		for _, ip := range ips {
-			texts = append(texts, ip.String())
-		}
-		line := fmt.Sprintf("%s: %s", name, strings.Join(texts, ", "))
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// Enumerates all interfaces and IP Addresses
+// Update all interfaces and IP Addresses
 func (ifaces *Interfaces) Update() error {
 	netif, err := net.Interfaces()
 	result := make(map[string][]net.IP)
@@ -65,4 +53,26 @@ func (ifaces *Interfaces) Update() error {
 	}
 	ifaces.Current = result
 	return nil
+}
+
+// ReplyToIP replies to a message asking for IP Addresses.
+func (ifaces *Interfaces) replyToIP(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+	if err := ifaces.Update(); err != nil {
+		return err.Error()
+	}
+	return ifaces.toString()
+}
+
+// ToString converts an ifaceMap to string
+func (ifaces *Interfaces) toString() string {
+	lines := make([]string, 0, len(ifaces.Current))
+	for name, ips := range ifaces.Current {
+		texts := make([]string, 0, len(ips))
+		for _, ip := range ips {
+			texts = append(texts, ip.String())
+		}
+		line := fmt.Sprintf("%s: %s", name, strings.Join(texts, ", "))
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
