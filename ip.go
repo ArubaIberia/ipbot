@@ -17,7 +17,7 @@ func RegisterIP(bot Bot) *Interfaces {
 	return ifaces
 }
 
-// Interfaces is a set of interfaces to IP addresses
+// Interfaces is a map of interfaces to IP addresses
 type Interfaces struct {
 	Current map[string][]net.IP
 }
@@ -60,11 +60,11 @@ func (ifaces *Interfaces) replyToIP(bot Bot, msg *tgbotapi.Message, tokens *Toke
 	if err := ifaces.Update(); err != nil {
 		return err.Error()
 	}
-	return ifaces.toString()
+	return ifaces.String()
 }
 
 // ToString converts an ifaceMap to string
-func (ifaces *Interfaces) toString() string {
+func (ifaces *Interfaces) String() string {
 	lines := make([]string, 0, len(ifaces.Current))
 	for name, ips := range ifaces.Current {
 		texts := make([]string, 0, len(ips))
