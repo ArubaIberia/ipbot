@@ -156,9 +156,10 @@ func (v *vlan) impair(iface string, p params) string {
 	var outDel bytes.Buffer
 	cmd.Stdout = &outDel
 	if err := cmd.Run(); err != nil {
-		messages = append(messages, fmt.Sprintf("(Ignore) Error at qdisc del: %s", err.Error()))
+		messages = append(messages, fmt.Sprintf("Warn: failed to clear interface settings, proceeding anyway (%s)", err.Error()))
+	} else {
+		messages = append(messages, fmt.Sprintf("Cleared interface %s", iface))
 	}
-	messages = append(messages, fmt.Sprintf("Cleared interface %s", iface))
 	messages = append(messages, outDel.String())
 	// Prepare for adding jitter and packet loss
 	cmdLine := fmt.Sprintf("tc qdisc add dev %s root netem", iface)
