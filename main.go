@@ -24,9 +24,9 @@ func main() {
 				break
 			}
 		}
-		if apiKey == "" {
-			log.Fatal("You must provide Telegram token (-token <telegram token>)")
-		}
+	}
+	if apiKey == "" {
+		log.Fatal("You must provide Telegram token (-token <telegram token> or environment variable IPBOT_API_KEY)")
 	}
 
 	for {
