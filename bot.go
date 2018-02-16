@@ -130,8 +130,13 @@ func (bot *bot) messages() <-chan *tgbotapi.Message {
 			return
 		}
 		for item := range items {
-			if item.Message != nil && bot.isMaster(item.Message) {
-				result <- item.Message
+			// Message can be new or edited
+			message := item.Message
+			if message == nil {
+				message = item.EditedMessage
+			}
+			if message != nil && bot.isMaster(message) {
+				result <- message
 			}
 		}
 	}(result)

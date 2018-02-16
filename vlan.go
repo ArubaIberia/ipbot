@@ -19,8 +19,14 @@ func RegisterVLAN(bot Bot, ifaces *Interfaces) {
 	bot.Add("vlan", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 		return v.replyToVLAN(bot, msg, tokens)
 	})
+	bot.Add("up", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+		return v.replyToIn(bot, msg, tokens)
+	})
 	bot.Add("in", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 		return v.replyToIn(bot, msg, tokens)
+	})
+	bot.Add("down", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+		return v.replyToOut(bot, msg, tokens)
 	})
 	bot.Add("out", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 		return v.replyToOut(bot, msg, tokens)
@@ -74,7 +80,7 @@ func (v *vlan) replyToVLAN(bot Bot, msg *tgbotapi.Message, tokens *Tokens) strin
 	return fmt.Sprintf("VLAN %d selected", vlan)
 }
 
-// ReplyToIn adds delay in the outbound direction
+// ReplyToIn adds delay in the upstream direction
 func (v *vlan) replyToIn(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 	if v.IFB == "" {
 		return "Current VLAN does not have IFB device assigned"
@@ -86,7 +92,7 @@ func (v *vlan) replyToIn(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string 
 	return v.impair(v.IFB, params)
 }
 
-// ReplyToOut adds delay in the outbound direction
+// ReplyToOut adds delay in the downstream direction
 func (v *vlan) replyToOut(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 	params, err := v.getParams(msg, tokens)
 	if err != nil {
