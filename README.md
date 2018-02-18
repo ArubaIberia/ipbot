@@ -59,4 +59,6 @@ To run the bot, you have to provide the telegram API key, either:
 - In the command line, with the "-token" parameter.
 - In the environment variable IPBOT_API_KEY
 
+If you installed the bot by using the bootstrap script in the [piwem project](https://github.com/arubaiberia/piwem) and provided your key during installation, then don't worry. The script created a service to start the application on boot, and saved the API key for you.
 
+If you didn't provide the API key during installation or want to change it afterwards, please check the README at [piwem](https://github.com/arubaiberia/piwem)
