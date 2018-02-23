@@ -162,7 +162,7 @@ func (v *vlan) impair(iface string, p params) string {
 	var outDel bytes.Buffer
 	cmd.Stdout = &outDel
 	if err := cmd.Run(); err != nil {
-		messages = append(messages, fmt.Sprintf("Warn: failed to clear interface settings, proceeding anyway (%s)", err.Error()))
+		messages = append(messages, fmt.Sprintf("Warn: nothing to clear in interface %s. Proceeding (%s)", iface, err.Error()))
 	} else {
 		messages = append(messages, fmt.Sprintf("Cleared interface %s", iface))
 	}
