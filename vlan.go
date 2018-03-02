@@ -16,6 +16,15 @@ import (
 func RegisterVLAN(bot Bot, ifaces *Interfaces) {
 	ifaces.Update()
 	v := &vlan{Interfaces: ifaces}
+	bot.Add("current", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+		return v.replyToCurrent(bot, msg, tokens)
+	})
+	bot.Add("iface", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+		return v.replyToIface(bot, msg, tokens)
+	})
+	bot.Add("interface", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+		return v.replyToIface(bot, msg, tokens)
+	})
 	bot.Add("vlan", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 		return v.replyToVLAN(bot, msg, tokens)
 	})
@@ -35,7 +44,6 @@ func RegisterVLAN(bot Bot, ifaces *Interfaces) {
 
 // VLAN data
 type vlan struct {
-	Selected   int         // Currently selected vlan
 	Interfaces *Interfaces // Enumeration of interfaces
 	Device     string      // Device name for selected VLAN
 	IFB        string      // IFB device name for selected vlan
@@ -45,6 +53,33 @@ type vlan struct {
 type params struct {
 	delay, jitter     int
 	loss, correlation float64
+}
+
+// ReplyToIface selects a particular interface
+func (v *vlan) replyToIface(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+	if tokens.Remaining() < 1 {
+		return "Error: must provide the device name (interface <name>)"
+	}
+	prefix := tokens.Next()
+	if prefix == "" {
+		return "Error: Must provide an interface name"
+	}
+	matches := make([]string, 0, 10)
+	for name := range v.Interfaces.Current {
+		if strings.HasPrefix(name, prefix) {
+			// VLAN interfaces are excluded, use the "VLAN" command
+			if !strings.Contains(name, ".") {
+				matches = append(matches, name)
+			}
+		}
+	}
+	if len(matches) <= 0 {
+		return fmt.Sprintf("Error: Interface %s is not found. Run \"ip\" for more info", prefix)
+	}
+	if len(matches) > 1 {
+		return fmt.Sprintf("Error: Interface %s is ambiguous, matches: %s", strings.Join(matches, ", "))
+	}
+	return v.setDevice(matches[0])
 }
 
 // ReplyToVLAN selects a particular VLAN
@@ -70,14 +105,23 @@ func (v *vlan) replyToVLAN(bot Bot, msg *tgbotapi.Message, tokens *Tokens) strin
 	if found == "" {
 		return fmt.Sprintf("Error: VLAN %d is not found. Run \"ip\" for more info", vlan)
 	}
-	v.Selected = vlan
-	v.Device = found
+	return v.setDevice(found)
+}
+
+func (v *vlan) setDevice(device string) string {
+	v.Device = device
+	v.IFB = ""
 	ifb, err := v.getIFB()
 	if err != nil {
-		return fmt.Sprintf("Could not get IFB: %s", err.Error())
+		return fmt.Sprintf("Could not get IFB: %s.\n Interface %s will only accept out or down commands.", err.Error(), device)
 	}
 	v.IFB = ifb
-	return fmt.Sprintf("VLAN %d selected", vlan)
+	return fmt.Sprintf("Device %s selected", device)
+}
+
+// ReplyToCurrent dumps the current interface
+func (v *vlan) replyToCurrent(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+	return fmt.Sprintf("Selected device: [%s]. Matching IFB: [%s]", v.Device, v.IFB)
 }
 
 // ReplyToIn adds delay in the upstream direction
@@ -104,8 +148,8 @@ func (v *vlan) replyToOut(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string
 // Get Delay, Jitter, PL and PL correlation from command
 func (v *vlan) getParams(msg *tgbotapi.Message, tokens *Tokens) (params, error) {
 	result := params{}
-	if v.Selected == 0 {
-		return result, errors.New("No VLAN selected. Run \"vlan\" for more info")
+	if v.Device == "" {
+		return result, errors.New("No device selected. Run \"ip\" for more info")
 	}
 	if tokens.Remaining() <= 0 {
 		return result, errors.New("Error: must at least provide delay (ms). Format: [in|out] <delay_ms> <jitter_ms> <PL %> <correlation %>")
@@ -187,7 +231,7 @@ func (v *vlan) impair(iface string, p params) string {
 	// If delay != 0, add it
 	var outAdd bytes.Buffer
 	if doApply {
-		messages = append(messages, fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %f%% PL (%f%% correlation)", iface, p.delay, p.jitter, p.loss, p.correlation))
+		messages = append(messages, fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %.2f%% PL (%.2f%% correlation)", iface, p.delay, p.jitter, p.loss, p.correlation))
 		fields := strings.Fields(cmdLine)
 		cmd = exec.Command(fields[0], fields[1:]...)
 		cmd.Stdout = &outAdd
@@ -213,7 +257,7 @@ func (v *vlan) getIFB() (string, error) {
 	re := regexp.MustCompile("Egress Redirect to device ifb[0-9]")
 	match := re.FindString(data)
 	if match == "" {
-		return "", fmt.Errorf("Missing IFB device for %s in %s", v.Device, data)
+		return "", fmt.Errorf("Missing IFB device for %s in [%s]", v.Device, data)
 	}
 	ifbFields := strings.Fields(match)
 	return ifbFields[len(ifbFields)-1], nil
