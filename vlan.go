@@ -230,16 +230,20 @@ func (v *vlan) impair(iface string, p params) string {
 	}
 	// If delay != 0, add it
 	var outAdd bytes.Buffer
+	var errAdd bytes.Buffer
 	if doApply {
 		messages = append(messages, fmt.Sprintf("Policy for interface %s: %dms delay (%dms jitter), %.2f%% PL (%.2f%% correlation)", iface, p.delay, p.jitter, p.loss, p.correlation))
 		fields := strings.Fields(cmdLine)
 		cmd = exec.Command(fields[0], fields[1:]...)
 		cmd.Stdout = &outAdd
+		cmd.Stderr = &errAdd
 		if err := cmd.Run(); err != nil {
-			messages = append(messages, fmt.Sprintf("Error at qdisc add: %s", err.Error()))
+			messages = append(messages, fmt.Sprintf("Error at qdisc add: %+v. The command was: '%s'. stdErr was: %s",
+				err.Error(),
+				strings.Join(fields, " "),
+				errAdd.String()))
 		}
 		messages = append(messages, outAdd.String())
-
 	}
 	// Return the output of the qdisc commands
 	return strings.Join(messages, "\n")
