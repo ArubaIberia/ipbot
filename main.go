@@ -33,14 +33,16 @@ func main() {
 		// Build the bot
 		bot, err := NewBot(apiKey)
 		if err != nil {
-			log.Fatal("Error creating bot: ", err)
+			log.Println("Failed to create bot (", err, "), retrying in 30 seconds...")
+			time.Sleep(30 * time.Second)
+			continue
 		}
 		// Register handlers
 		interfaces := RegisterIP(bot)
 		RegisterVLAN(bot, interfaces)
 		// Loop
 		bot.Loop()
-		log.Print("Loop exited, retrying in five minutes...")
-		time.Sleep(5 * time.Minute)
+		log.Print("Loop exited, retrying in 30 seconds...")
+		time.Sleep(30 * time.Second)
 	}
 }

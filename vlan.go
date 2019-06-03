@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/telegram-bot-api.v4"
+	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
 // RegisterVLAN adds "vlan", "in", "out" commands to bot
@@ -40,6 +40,23 @@ func RegisterVLAN(bot Bot, ifaces *Interfaces) {
 	bot.Add("out", func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 		return v.replyToOut(bot, msg, tokens)
 	})
+	// Add a shortcut for each interface, except "lo", "ifb"
+	skipPrefixes := []string{"lo", "ifb"}
+	for ifaceName := range ifaces.Current {
+		current, doSkip := ifaceName, false
+		for _, skip := range skipPrefixes {
+			if strings.HasPrefix(current, skip) {
+				doSkip = true
+				break
+			}
+		}
+		if doSkip {
+			continue
+		}
+		bot.Add(current, func(bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
+			return v.selectIface(current, bot, msg, tokens)
+		})
+	}
 }
 
 // VLAN data
@@ -64,6 +81,11 @@ func (v *vlan) replyToIface(bot Bot, msg *tgbotapi.Message, tokens *Tokens) stri
 	if prefix == "" {
 		return "Error: Must provide an interface name"
 	}
+	return v.selectIface(prefix, bot, msg, tokens)
+}
+
+// SelectIface selects a particular interface
+func (v *vlan) selectIface(prefix string, bot Bot, msg *tgbotapi.Message, tokens *Tokens) string {
 	matches := make([]string, 0, 10)
 	for name := range v.Interfaces.Current {
 		if strings.HasPrefix(name, prefix) {
@@ -77,7 +99,7 @@ func (v *vlan) replyToIface(bot Bot, msg *tgbotapi.Message, tokens *Tokens) stri
 		return fmt.Sprintf("Error: Interface %s is not found. Run \"ip\" for more info", prefix)
 	}
 	if len(matches) > 1 {
-		return fmt.Sprintf("Error: Interface %s is ambiguous, matches: %s", strings.Join(matches, ", "))
+		return fmt.Sprintf("Error: Interface %s is ambiguous, matches: %s", prefix, strings.Join(matches, ", "))
 	}
 	return v.setDevice(matches[0])
 }
